@@ -27,12 +27,11 @@ const outlookBatchSchema = z.object({
   batchData: z.string().min(1, '请输入批量数据'),
   namePrefix: z
     .string()
-    .optional()
     .default('')
     .transform((val) => (val ?? '').trim()),
   // 代理与分组配置
-  proxy_url: z.string().optional(),
-  group_id: z.string().optional(),
+  proxy_url: z.string().default(''),
+  group_id: z.string().default(''),
 });
 
 type OutlookBatchForm = z.infer<typeof outlookBatchSchema>;
