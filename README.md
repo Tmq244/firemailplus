@@ -6,10 +6,10 @@
 
 **基于 Next.js 15 + React 19 + Go 的现代化邮件管理平台**
 
-[![GitHub stars](https://img.shields.io/github/stars/fengyuanluo/firemailplus?style=social)](https://github.com/fengyuanluo/firemailplus/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/fengyuanluo/firemailplus?style=social)](https://github.com/fengyuanluo/firemailplus/network/members)
-[![GitHub issues](https://img.shields.io/github/issues/fengyuanluo/firemailplus)](https://github.com/fengyuanluo/firemailplus/issues)
-[![GitHub license](https://img.shields.io/github/license/fengyuanluo/firemailplus)](https://github.com/fengyuanluo/firemailplus/blob/main/LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/Tmq244/firemailplus?style=social)](https://github.com/Tmq244/firemailplus/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/Tmq244/firemailplus?style=social)](https://github.com/Tmq244/firemailplus/network/members)
+[![GitHub issues](https://img.shields.io/github/issues/Tmq244/firemailplus)](https://github.com/Tmq244/firemailplus/issues)
+[![GitHub license](https://img.shields.io/github/license/Tmq244/firemailplus)](https://github.com/Tmq244/firemailplus/blob/main/LICENSE)
 
 [![Next.js](https://img.shields.io/badge/Next.js-15-black?logo=next.js)](https://nextjs.org/)
 [![React](https://img.shields.io/badge/React-19-blue?logo=react)](https://reactjs.org/)
@@ -88,7 +88,7 @@ FireMail Plus 是一个现代化的邮件客户端应用，采用最新的技术
 
 ```bash
 # 1. 克隆项目
-git clone https://github.com/fengyuanluo/firemailplus.git
+git clone https://github.com/Tmq244/firemailplus.git
 cd firemailplus
 
 # 2. 配置环境变量（可选）
@@ -117,7 +117,7 @@ docker-compose logs -f
 
 ```bash
 # 1. 拉取镜像
-docker pull luofengyuan/firemailplus:latest
+docker pull tmq244/firemailplus:latest
 
 # 2. 创建数据卷
 docker volume create firemail_data
@@ -146,7 +146,7 @@ docker logs firemail-app
 
 ```bash
 # 1. 克隆项目
-git clone https://github.com/fengyuanluo/firemailplus.git
+git clone https://github.com/Tmq244/firemailplus.git
 cd firemailplus
 
 # 2. 启动后端服务
