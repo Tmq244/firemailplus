@@ -28,6 +28,7 @@ const outlookBatchSchema = z.object({
   namePrefix: z
     .string()
     .optional()
+    .default('')
     .transform((val) => (val ?? '').trim()),
   // 代理与分组配置
   proxy_url: z.string().optional(),
