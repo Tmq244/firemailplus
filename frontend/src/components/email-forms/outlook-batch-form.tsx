@@ -163,8 +163,8 @@ export function OutlookBatchForm({ onSuccess, onCancel }: OutlookBatchFormProps)
                 <p className="text-sm text-red-500 mt-1">{errors.namePrefix.message}</p>
               )}
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                {watch('namePrefix', '').trim()
-                  ? `账户将命名为：${watch('namePrefix', '').trim()} 1, ${watch('namePrefix', '').trim()} 2...`
+                {(watch('namePrefix') ?? '').trim()
+                  ? `账户将命名为：${(watch('namePrefix') ?? '').trim()} 1, ${(watch('namePrefix') ?? '').trim()} 2...`
                   : '留空时将直接使用邮箱地址作为账户名称'}
               </p>
             </div>
