@@ -161,7 +161,7 @@ export function useBatchAddAccounts() {
 
   // 批量处理账户
   const processBatch = useCallback(
-    async (accounts: BatchAccountData[], namePrefix: string = 'Outlook账户') => {
+    async (accounts: BatchAccountData[], namePrefix: string = '') => {
       if (accounts.length === 0) {
         toast.error('没有有效的账户数据');
         return;
@@ -178,6 +178,7 @@ export function useBatchAddAccounts() {
 
       const results: BatchProcessResult[] = [];
       const batchSize = 5; // 并发控制，每批最多5个请求
+      const prefix = (namePrefix ?? '').trim();
 
       try {
         for (let i = 0; i < accounts.length; i += batchSize) {
@@ -191,7 +192,7 @@ export function useBatchAddAccounts() {
 
           // 并发处理当前批次
           const batchPromises = batch.map((account, batchIndex) => {
-            const accountName = `${namePrefix} ${i + batchIndex + 1}`;
+            const accountName = prefix ? `${prefix} ${i + batchIndex + 1}` : account.email;
             return processAccount(account, accountName);
           });
 
@@ -258,7 +259,7 @@ export function useBatchAddAccounts() {
 
   // 重试失败的账户
   const retryFailed = useCallback(
-    async (namePrefix: string = 'Outlook账户') => {
+    async (accounts: BatchAccountData[], namePrefix: string = '') => {
       const failedAccounts = progress.results
         .filter((result) => !result.success)
         .map((result) => result.data);
@@ -269,9 +270,9 @@ export function useBatchAddAccounts() {
       }
 
       await processBatch(failedAccounts, namePrefix);
-    },
+    async (accounts: BatchAccountData[], namePrefix: string = '') => {
     [progress.results, processBatch]
-  );
+    async (accounts: BatchAccountData[], namePrefix: string = '') => {
 
   // 重置进度
   const resetProgress = useCallback(() => {
@@ -288,8 +289,8 @@ export function useBatchAddAccounts() {
   return {
     progress,
     processBatch,
-    retryFailed,
-    resetProgress,
+    async (accounts: BatchAccountData[], namePrefix: string = '') => {
+    async (accounts: BatchAccountData[], namePrefix: string = '') => {
     parseBatchData,
   };
 }
