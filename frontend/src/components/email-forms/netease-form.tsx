@@ -13,6 +13,7 @@ import { ChevronDown, ChevronRight, ExternalLink, Eye, EyeOff } from 'lucide-rea
 import { apiClient } from '@/lib/api';
 import { useMailboxStore } from '@/lib/store';
 import { toast } from 'sonner';
+import { AccountOptionsSection } from './account-options-section';
 
 // 客户端授权码验证函数
 const validateAuthCode = (authCode: string) => {
@@ -51,6 +52,9 @@ const neteaseSchema = z.object({
   password: z.string().refine(validateAuthCode, {
     message: '请输入有效的16位客户端授权码',
   }),
+  // 代理配置
+  proxy_url: z.string().optional(),
+  group_id: z.string().optional(),
 });
 
 type NetEaseForm = z.infer<typeof neteaseSchema>;
@@ -72,8 +76,12 @@ export function NetEaseForm({ onSuccess, onCancel }: NetEaseFormProps) {
     formState: { errors },
     reset,
     watch,
+    setValue,
   } = useForm<NetEaseForm>({
     resolver: zodResolver(neteaseSchema),
+    defaultValues: {
+      group_id: '',
+    },
   });
 
   // 监听授权码输入，自动格式化显示
@@ -98,6 +106,8 @@ export function NetEaseForm({ onSuccess, onCancel }: NetEaseFormProps) {
         provider: '163',
         auth_method: 'password',
         password: cleanAuthCode,
+        proxy_url: data.proxy_url,
+        group_id: data.group_id ? Number(data.group_id) : null,
       });
 
       if (response.success && response.data) {
@@ -203,6 +213,12 @@ export function NetEaseForm({ onSuccess, onCancel }: NetEaseFormProps) {
               </p>
             </div>
           </div>
+
+          <AccountOptionsSection
+            form={{ register, watch, setValue, formState: { errors } } as any}
+            disabled={isSubmitting}
+            compactProxy={true}
+          />
 
           {/* 设置说明 */}
           <Collapsible open={showInstructions} onOpenChange={setShowInstructions}>

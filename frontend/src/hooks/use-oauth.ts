@@ -64,6 +64,8 @@ export function useOAuth2() {
       expires_at: number;
       scope?: string;
       client_id: string; // 必需，用于token刷新
+      proxy_url?: string; // 代理配置
+      group_id?: number | null;
     }) => apiClient.createOAuth2Account(account),
     onSuccess: (response) => {
       if (response.success && response.data) {
@@ -89,6 +91,8 @@ export function useOAuth2() {
       scope?: string;
       auth_url?: string;
       token_url?: string;
+      proxy_url?: string;
+      group_id?: number | null;
     }) => apiClient.createManualOAuth2Account(account),
     onSuccess: (response) => {
       if (response.success && response.data) {
@@ -159,7 +163,12 @@ export function useOAuth2() {
   };
 
   // Gmail OAuth2 完整流程 - 直接跳转模式
-  const authenticateGmail = async (accountName: string, email: string) => {
+  const authenticateGmail = async (
+    accountName: string,
+    email: string,
+    proxyUrl?: string,
+    groupId?: number | null
+  ) => {
     try {
       // 1. 将账户信息编码到回调URL中
       const accountInfo = encodeURIComponent(
@@ -167,6 +176,8 @@ export function useOAuth2() {
           name: accountName,
           email: email,
           provider: 'gmail',
+          proxy_url: proxyUrl || '',
+          group_id: groupId ?? null,
         })
       );
       const callbackUrl = `${window.location.origin}/oauth/callback?account_info=${accountInfo}`;
@@ -183,7 +194,12 @@ export function useOAuth2() {
   };
 
   // Outlook OAuth2 完整流程 - 直接跳转模式
-  const authenticateOutlook = async (accountName: string, email: string) => {
+  const authenticateOutlook = async (
+    accountName: string,
+    email: string,
+    proxyUrl?: string,
+    groupId?: number | null
+  ) => {
     try {
       // 1. 将账户信息编码到回调URL中
       const accountInfo = encodeURIComponent(
@@ -191,6 +207,8 @@ export function useOAuth2() {
           name: accountName,
           email: email,
           provider: 'outlook',
+          proxy_url: proxyUrl || '',
+          group_id: groupId ?? null,
         })
       );
       const callbackUrl = `${window.location.origin}/oauth/callback?account_info=${accountInfo}`;

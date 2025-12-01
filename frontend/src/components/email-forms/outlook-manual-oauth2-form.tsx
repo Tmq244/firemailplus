@@ -13,6 +13,7 @@ import { ChevronDown, ChevronRight, ExternalLink, Eye, EyeOff } from 'lucide-rea
 import { useOAuth2 } from '@/hooks/use-oauth';
 import { useMailboxStore } from '@/lib/store';
 import { toast } from 'sonner';
+import { AccountOptionsSection } from './account-options-section';
 
 // UUID格式验证
 const isValidUUID = (value: string) => {
@@ -36,6 +37,9 @@ const outlookManualOAuth2Schema = z.object({
   client_secret: z.string().optional(),
   refresh_token: z.string().min(1, '请输入刷新令牌'),
   scope: z.string().optional(),
+  // 代理配置
+  proxy_url: z.string().optional(),
+  group_id: z.string().optional(),
 });
 
 type OutlookManualOAuth2Form = z.infer<typeof outlookManualOAuth2Schema>;
@@ -59,11 +63,13 @@ export function OutlookManualOAuth2Form({ onSuccess, onCancel }: OutlookManualOA
     formState: { errors },
     reset,
     setValue,
+    watch,
   } = useForm<OutlookManualOAuth2Form>({
     resolver: zodResolver(outlookManualOAuth2Schema),
     defaultValues: {
       scope:
         'https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send offline_access',
+      group_id: '',
     },
   });
 
@@ -78,6 +84,8 @@ export function OutlookManualOAuth2Form({ onSuccess, onCancel }: OutlookManualOA
         client_secret: data.client_secret || undefined,
         refresh_token: data.refresh_token,
         scope: data.scope || undefined,
+        proxy_url: data.proxy_url || undefined,
+        group_id: data.group_id ? Number(data.group_id) : null,
       });
 
       if (response.success && response.data) {
@@ -275,6 +283,12 @@ export function OutlookManualOAuth2Form({ onSuccess, onCancel }: OutlookManualOA
               </p>
             </div>
           </div>
+
+          <AccountOptionsSection
+            form={{ register, watch, setValue, formState: { errors } } as any}
+            disabled={isSubmitting}
+            compactProxy={true}
+          />
 
           {/* 设置说明 */}
           <Collapsible open={showInstructions} onOpenChange={setShowInstructions}>

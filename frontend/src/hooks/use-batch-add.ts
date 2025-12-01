@@ -123,7 +123,9 @@ export function useBatchAddAccounts() {
   // 处理单个账户
   const processAccount = async (
     accountData: BatchAccountData,
-    accountName: string
+    accountName: string,
+    proxyUrl?: string,
+    groupId?: number | null
   ): Promise<BatchProcessResult> => {
     try {
       const response = await apiClient.createManualOAuth2Account({
@@ -134,6 +136,8 @@ export function useBatchAddAccounts() {
         refresh_token: accountData.refresh_token,
         scope:
           'https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send offline_access',
+        proxy_url: proxyUrl,
+        group_id: groupId ?? null,
       });
 
       if (response.success && response.data) {
@@ -161,7 +165,12 @@ export function useBatchAddAccounts() {
 
   // 批量处理账户
   const processBatch = useCallback(
-    async (accounts: BatchAccountData[], namePrefix: string = '') => {
+    async (
+      accounts: BatchAccountData[],
+      namePrefix: string = 'Outlook账户',
+      proxyUrl?: string,
+      groupId?: number | null
+    ) => {
       if (accounts.length === 0) {
         toast.error('没有有效的账户数据');
         return;
@@ -193,7 +202,7 @@ export function useBatchAddAccounts() {
           // 并发处理当前批次
           const batchPromises = batch.map((account, batchIndex) => {
             const accountName = prefix ? `${prefix} ${i + batchIndex + 1}` : account.email;
-            return processAccount(account, accountName);
+            return processAccount(account, accountName, proxyUrl, groupId);
           });
 
           const batchResults = await Promise.allSettled(batchPromises);
@@ -259,7 +268,7 @@ export function useBatchAddAccounts() {
 
   // 重试失败的账户
   const retryFailed = useCallback(
-    async (accounts: BatchAccountData[], namePrefix: string = '') => {
+    async (namePrefix: string = 'Outlook账户', proxyUrl?: string, groupId?: number | null) => {
       const failedAccounts = progress.results
         .filter((result) => !result.success)
         .map((result) => result.data);
@@ -269,10 +278,10 @@ export function useBatchAddAccounts() {
         return;
       }
 
-      await processBatch(failedAccounts, namePrefix);
-    async (accounts: BatchAccountData[], namePrefix: string = '') => {
+      await processBatch(failedAccounts, namePrefix, proxyUrl, groupId);
+    },
     [progress.results, processBatch]
-    async (accounts: BatchAccountData[], namePrefix: string = '') => {
+  );
 
   // 重置进度
   const resetProgress = useCallback(() => {
@@ -289,8 +298,8 @@ export function useBatchAddAccounts() {
   return {
     progress,
     processBatch,
-    async (accounts: BatchAccountData[], namePrefix: string = '') => {
-    async (accounts: BatchAccountData[], namePrefix: string = '') => {
+    retryFailed,
+    resetProgress,
     parseBatchData,
   };
 }

@@ -107,6 +107,8 @@ function OAuthCallbackContent() {
           expires_at: Date.now() + tokenData.expires_in * 1000,
           scope: tokenData.scope,
           client_id: tokenClientId,
+          proxy_url: accountData.proxy_url || '',
+          group_id: accountData.group_id ?? null,
         });
 
         if (createResponse.success && createResponse.data) {

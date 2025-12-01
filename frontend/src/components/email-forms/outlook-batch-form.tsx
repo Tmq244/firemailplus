@@ -21,13 +21,17 @@ import {
 } from 'lucide-react';
 import { useBatchAddAccounts, parseBatchData } from '@/hooks/use-batch-add';
 import { toast } from 'sonner';
+import { AccountOptionsSection } from './account-options-section';
 
 const outlookBatchSchema = z.object({
-  batchData: z.string().min(1, '???????'),
+  batchData: z.string().min(1, '请输入批量数据'),
   namePrefix: z
     .string()
     .optional()
     .transform((val) => (val ?? '').trim()),
+  // 代理与分组配置
+  proxy_url: z.string().optional(),
+  group_id: z.string().optional(),
 });
 
 type OutlookBatchForm = z.infer<typeof outlookBatchSchema>;
@@ -50,10 +54,13 @@ export function OutlookBatchForm({ onSuccess, onCancel }: OutlookBatchFormProps)
     formState: { errors },
     watch,
     reset,
+    setValue,
   } = useForm<OutlookBatchForm>({
     resolver: zodResolver(outlookBatchSchema),
     defaultValues: {
       namePrefix: '',
+      proxy_url: '',
+      group_id: '',
     },
   });
 
@@ -86,7 +93,8 @@ export function OutlookBatchForm({ onSuccess, onCancel }: OutlookBatchFormProps)
     }
 
     setShowResults(true);
-    await processBatch(accounts, data.namePrefix);
+    const groupId = data.group_id ? Number(data.group_id) : null;
+    await processBatch(accounts, data.namePrefix || '', data.proxy_url, groupId ?? undefined);
   };
 
   // 导出结果
@@ -140,7 +148,7 @@ export function OutlookBatchForm({ onSuccess, onCancel }: OutlookBatchFormProps)
               <input
                 id="namePrefix"
                 type="text"
-                placeholder="Outlook账户"
+                placeholder="Outlook账户（可留空）"
                 {...register('namePrefix')}
                 className={`mt-1 h-10 w-full px-3 py-2 border rounded-md ${
                   errors.namePrefix
@@ -168,7 +176,12 @@ export function OutlookBatchForm({ onSuccess, onCancel }: OutlookBatchFormProps)
               </div>
               <Textarea
                 id="batchData"
-                placeholder="请输入批量数据，每行一个账户&#10;格式：邮箱----密码----客户端ID----刷新令牌&#10;&#10;示例：&#10;user1@outlook.com----password1----12345678-1234-1234-1234-123456789012----refresh_token_1&#10;user2@hotmail.com----password2----87654321-4321-4321-4321-210987654321----refresh_token_2"
+                placeholder={`请输入批量数据，每行一个账号
+格式：邮箱----密码----客户端ID----刷新令牌
+
+示例：
+user1@outlook.com----password1----12345678-1234-1234-1234-123456789012----refresh_token_1
+user2@hotmail.com----password2----87654321-4321-4321-4321-210987654321----refresh_token_2`}
                 rows={8}
                 {...register('batchData')}
                 onChange={(e) => {
@@ -190,7 +203,7 @@ export function OutlookBatchForm({ onSuccess, onCancel }: OutlookBatchFormProps)
               {validationErrors.length > 0 && (
                 <div className="mt-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md">
                   <h4 className="text-sm font-medium text-red-800 dark:text-red-200 mb-2">
-                    数据格式错误 ({validationErrors.length} 个)：
+                    数据格式错误 ({validationErrors.length} 条)
                   </h4>
                   <ul className="text-xs text-red-700 dark:text-red-300 space-y-1 max-h-32 overflow-y-auto">
                     {validationErrors.map((error, index) => (
@@ -201,6 +214,12 @@ export function OutlookBatchForm({ onSuccess, onCancel }: OutlookBatchFormProps)
               )}
             </div>
           </div>
+
+          <AccountOptionsSection
+            form={{ register, watch, setValue, formState: { errors } } as any}
+            disabled={progress.isProcessing}
+            compactProxy={true}
+          />
 
           {/* 格式说明 */}
           <Collapsible open={showInstructions} onOpenChange={setShowInstructions}>
@@ -224,9 +243,7 @@ export function OutlookBatchForm({ onSuccess, onCancel }: OutlookBatchFormProps)
                       邮箱----密码----客户端ID----刷新令牌
                     </code>
                   </li>
-                  <li>
-                    邮箱必须是Outlook相关域名（@outlook.com, @hotmail.com, @live.com, @msn.com）
-                  </li>
+                  <li>邮箱必须是Outlook相关域名（@outlook.com, @hotmail.com, @live.com, @msn.com）</li>
                   <li>密码字段保留但不使用（OAuth2模式）</li>
                   <li>客户端ID必须是有效的UUID格式</li>
                   <li>刷新令牌必须是有效的OAuth2刷新令牌</li>
@@ -285,7 +302,7 @@ user3@live.com----password3----11111111-2222-3333-4444-555555555555----refresh_t
                 ) : (
                   <ChevronRight className="w-4 h-4" />
                 )}
-                处理结果 ({progress.results.length} 个)
+                处理结果 ({progress.results.length} 条)
               </CollapsibleTrigger>
               <CollapsibleContent className="mt-3">
                 <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 space-y-3">
@@ -299,7 +316,13 @@ user3@live.com----password3----11111111-2222-3333-4444-555555555555----refresh_t
                           type="button"
                           size="sm"
                           variant="outline"
-                          onClick={() => retryFailed(watch('namePrefix'))}
+                          onClick={() =>
+                            retryFailed(
+                              watch('namePrefix'),
+                              watch('proxy_url'),
+                              watch('group_id') ? Number(watch('group_id')) : null
+                            )
+                          }
                           className="text-xs"
                         >
                           <RefreshCw className="w-3 h-3 mr-1" />

@@ -8,6 +8,30 @@ export interface EmailAddress {
   address: string;
 }
 
+// 代理配置接口
+export interface ProxyConfig {
+  url?: string; // 代理URL
+}
+
+// 邮箱分组接口
+export interface EmailAccountGroup {
+  id: number;
+  user_id: number;
+  name: string;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+  deleted_at?: string | null;
+}
+
+// 代理URL示例
+export const PROXY_EXAMPLES = [
+  { label: 'HTTP代理', example: 'http://proxy.company.com:8080' },
+  { label: 'HTTP代理(带认证)', example: 'http://username:password@proxy.company.com:8080' },
+  { label: 'SOCKS5代理', example: 'socks5://proxy.company.com:1080' },
+  { label: 'SOCKS5代理(带认证)', example: 'socks5://username:password@proxy.company.com:1080' },
+] as const;
+
 // 邮箱账户接口
 export interface EmailAccount {
   id: number;
@@ -27,6 +51,14 @@ export interface EmailAccount {
   smtp_host: string;
   smtp_port: number;
   smtp_security: string;
+
+  // 代理配置
+  proxy_url?: string; // 代理URL，如：http://user:pass@proxy.com:8080
+
+  // 分组信息
+  group_id?: number | null;
+  group?: EmailAccountGroup;
+  sort_order: number;
 
   // 状态信息
   is_active: boolean;

@@ -3,6 +3,9 @@ package services
 import (
 	"bytes"
 	"context"
+	"crypto/md5"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"html"
 	"io"
@@ -11,9 +14,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-	"crypto/md5"
-	"encoding/hex"
-	"encoding/json"
 
 	"firemail/internal/cache"
 	"firemail/internal/config"
@@ -33,6 +33,13 @@ type EmailService interface {
 	UpdateEmailAccount(ctx context.Context, userID, accountID uint, req *UpdateEmailAccountRequest) (*models.EmailAccount, error)
 	DeleteEmailAccount(ctx context.Context, userID, accountID uint) error
 	TestEmailAccount(ctx context.Context, userID, accountID uint) error
+	GetAccountGroups(ctx context.Context, userID uint) ([]*models.EmailAccountGroup, error)
+	CreateAccountGroup(ctx context.Context, userID uint, req *CreateAccountGroupRequest) (*models.EmailAccountGroup, error)
+	UpdateAccountGroup(ctx context.Context, userID, groupID uint, req *UpdateAccountGroupRequest) (*models.EmailAccountGroup, error)
+	DeleteAccountGroup(ctx context.Context, userID, groupID uint) error
+	ReorderAccountGroups(ctx context.Context, userID uint, orders []AccountGroupOrder) error
+	MoveAccountsToGroup(ctx context.Context, userID uint, req *MoveAccountsToGroupRequest) error
+	ReorderAccounts(ctx context.Context, userID uint, orders []AccountOrder) error
 
 	// 邮件同步
 	SyncEmails(ctx context.Context, accountID uint) error
@@ -101,6 +108,68 @@ func (s *EmailServiceImpl) SetAttachmentService(attachmentService AttachmentDown
 
 // 请求和响应结构体
 
+// OptionalUint 用于处理可空并区分是否显式提供的uint字段
+type OptionalUint struct {
+	Set   bool
+	Value *uint
+}
+
+// UintPtr 返回指针值
+func (o OptionalUint) UintPtr() *uint {
+	if !o.Set {
+		return nil
+	}
+	return o.Value
+}
+
+// UnmarshalJSON 自定义反序列化逻辑
+func (o *OptionalUint) UnmarshalJSON(data []byte) error {
+	if o == nil {
+		return fmt.Errorf("optional uint is nil")
+	}
+	o.Set = true
+	trimmed := bytes.TrimSpace(data)
+	if bytes.Equal(trimmed, []byte("null")) {
+		o.Value = nil
+		return nil
+	}
+	var v uint
+	if err := json.Unmarshal(trimmed, &v); err != nil {
+		return err
+	}
+	o.Value = &v
+	return nil
+}
+
+// CreateAccountGroupRequest 创建分组请求
+type CreateAccountGroupRequest struct {
+	Name string `json:"name" binding:"required"`
+}
+
+// UpdateAccountGroupRequest 更新分组请求
+type UpdateAccountGroupRequest struct {
+	Name      *string `json:"name"`
+	SortOrder *int    `json:"sort_order"`
+}
+
+// AccountGroupOrder 分组排序
+type AccountGroupOrder struct {
+	ID        uint `json:"id" binding:"required"`
+	SortOrder int  `json:"sort_order" binding:"required"`
+}
+
+// MoveAccountsToGroupRequest 批量移动账户到分组
+type MoveAccountsToGroupRequest struct {
+	AccountIDs []uint `json:"account_ids" binding:"required"`
+	GroupID    *uint  `json:"group_id"`
+}
+
+// AccountOrder 邮箱账户排序请求
+type AccountOrder struct {
+	AccountID uint `json:"account_id" binding:"required"`
+	SortOrder int  `json:"sort_order" binding:"required"`
+}
+
 // CreateEmailAccountRequest 创建邮件账户请求
 type CreateEmailAccountRequest struct {
 	Name         string `json:"name" binding:"required"`
@@ -115,6 +184,13 @@ type CreateEmailAccountRequest struct {
 	SMTPHost     string `json:"smtp_host"`
 	SMTPPort     int    `json:"smtp_port"`
 	SMTPSecurity string `json:"smtp_security"`
+
+	// 代理配置
+	ProxyURL string `json:"proxy_url"` // 代理URL，如：http://user:pass@proxy.com:8080
+
+	// 分组配置
+	GroupID   *uint `json:"group_id"`
+	SortOrder *int  `json:"sort_order"`
 }
 
 // UpdateEmailAccountRequest 更新邮件账户请求
@@ -128,6 +204,13 @@ type UpdateEmailAccountRequest struct {
 	SMTPPort     *int    `json:"smtp_port"`
 	SMTPSecurity *string `json:"smtp_security"`
 	IsActive     *bool   `json:"is_active"`
+
+	// 代理配置（使用指针类型支持部分更新）
+	ProxyURL *string `json:"proxy_url"` // 代理URL，如：http://user:pass@proxy.com:8080
+
+	// 分组配置
+	GroupID   OptionalUint `json:"group_id"`
+	SortOrder *int         `json:"sort_order"`
 }
 
 // GetEmailsRequest 获取邮件列表请求
@@ -267,14 +350,37 @@ func (s *EmailServiceImpl) CreateEmailAccount(ctx context.Context, userID uint, 
 		SyncStatus: "pending",
 	}
 
+	// 处理分组信息
+	if req.GroupID != nil {
+		if _, err := s.findAccountGroup(s.db.WithContext(ctx), userID, *req.GroupID); err != nil {
+			return nil, err
+		}
+		account.GroupID = req.GroupID
+	}
+
+	if req.SortOrder != nil {
+		account.SortOrder = *req.SortOrder
+	} else {
+		nextOrder, err := s.nextAccountSortOrderDB(s.db.WithContext(ctx), userID, account.GroupID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to determine account sort order: %w", err)
+		}
+		account.SortOrder = nextOrder
+	}
+
 	// 根据邮箱类型设置配置
 	if err := s.configureAccountByProvider(account, req, providerConfig); err != nil {
 		return nil, fmt.Errorf("failed to configure account: %w", err)
 	}
 
+	// 设置代理配置
+	if err := s.configureProxySettings(account, req); err != nil {
+		return nil, fmt.Errorf("failed to configure proxy settings: %w", err)
+	}
+
 	// 调试日志
-	log.Printf("Account before validation: Provider=%s, IMAPHost=%s, IMAPPort=%d, SMTPHost=%s, SMTPPort=%d",
-		account.Provider, account.IMAPHost, account.IMAPPort, account.SMTPHost, account.SMTPPort)
+	log.Printf("Account before validation: Provider=%s, IMAPHost=%s, IMAPPort=%d, SMTPHost=%s, SMTPPort=%d, ProxyURL=%s",
+		account.Provider, account.IMAPHost, account.IMAPPort, account.SMTPHost, account.SMTPPort, account.ProxyURL)
 
 	// 验证配置
 	if err := s.providerFactory.ValidateProviderConfig(account); err != nil {
@@ -311,8 +417,10 @@ func (s *EmailServiceImpl) CreateEmailAccount(ctx context.Context, userID uint, 
 func (s *EmailServiceImpl) GetEmailAccounts(ctx context.Context, userID uint) ([]*models.EmailAccount, error) {
 	var accounts []*models.EmailAccount
 
-	err := s.db.Where("user_id = ?", userID).
-		Order("created_at DESC").
+	err := s.db.WithContext(ctx).
+		Where("user_id = ?", userID).
+		Preload("Group").
+		Order("sort_order ASC, created_at DESC").
 		Find(&accounts).Error
 
 	if err != nil {
@@ -372,6 +480,42 @@ func (s *EmailServiceImpl) UpdateEmailAccount(ctx context.Context, userID, accou
 		account.IsActive = *req.IsActive
 	}
 
+	// 更新代理配置
+	if err := s.updateProxySettings(account, req); err != nil {
+		return nil, fmt.Errorf("failed to update proxy settings: %w", err)
+	}
+
+	currentGroupID := account.GroupID
+
+	// 更新分组与排序
+	if req.GroupID.Set {
+		if req.GroupID.Value != nil {
+			if _, err := s.findAccountGroup(s.db.WithContext(ctx), userID, *req.GroupID.Value); err != nil {
+				return nil, err
+			}
+		}
+
+		changed := false
+		if (currentGroupID == nil) != (req.GroupID.Value == nil) {
+			changed = true
+		} else if currentGroupID != nil && req.GroupID.Value != nil && *currentGroupID != *req.GroupID.Value {
+			changed = true
+		}
+
+		account.GroupID = req.GroupID.Value
+		if changed && req.SortOrder == nil {
+			nextOrder, err := s.nextAccountSortOrderDB(s.db.WithContext(ctx), userID, account.GroupID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to determine account sort order: %w", err)
+			}
+			account.SortOrder = nextOrder
+		}
+	}
+
+	if req.SortOrder != nil {
+		account.SortOrder = *req.SortOrder
+	}
+
 	// 验证更新后的配置
 	if err := s.providerFactory.ValidateProviderConfig(account); err != nil {
 		return nil, fmt.Errorf("invalid provider configuration: %w", err)
@@ -382,10 +526,10 @@ func (s *EmailServiceImpl) UpdateEmailAccount(ctx context.Context, userID, accou
 		return nil, fmt.Errorf("failed to update email account: %w", err)
 	}
 
-	// 如果更新了连接相关的配置，测试连接
+	// 如果更新了连接相关的配置（包括代理配置），测试连接
 	if req.Password != nil || req.IMAPHost != nil || req.IMAPPort != nil ||
 		req.IMAPSecurity != nil || req.SMTPHost != nil || req.SMTPPort != nil ||
-		req.SMTPSecurity != nil {
+		req.SMTPSecurity != nil || req.ProxyURL != nil {
 		if err := s.TestEmailAccount(ctx, userID, accountID); err != nil {
 			account.SyncStatus = "error"
 			account.ErrorMessage = err.Error()
@@ -965,7 +1109,7 @@ func (s *EmailServiceImpl) DeleteEmail(ctx context.Context, userID, emailID uint
 	// 发布邮件删除事件
 	if s.eventPublisher != nil {
 		isDeleted := true
-		event := sse.NewEmailStatusEvent(emailID, email.AccountID, userID, nil, nil, nil)
+		event := sse.NewEmailStatusEvent(emailID, email.AccountID, userID, nil, nil, nil, nil)
 		event.Type = sse.EventEmailDeleted
 		if event.Data != nil {
 			if statusData, ok := event.Data.(*sse.EmailStatusEventData); ok {
@@ -1010,7 +1154,7 @@ func (s *EmailServiceImpl) MarkEmailAsRead(ctx context.Context, userID, emailID 
 	// 发布邮件状态变更事件
 	if s.eventPublisher != nil {
 		isRead := true
-		event := sse.NewEmailStatusEvent(emailID, email.AccountID, userID, &isRead, nil, nil)
+		event := sse.NewEmailStatusEvent(emailID, email.AccountID, userID, &isRead, nil, nil, nil)
 		if err := s.eventPublisher.PublishToUser(ctx, userID, event); err != nil {
 			// 记录错误但不影响主要操作
 			fmt.Printf("Failed to publish email read event: %v\n", err)
@@ -1049,7 +1193,7 @@ func (s *EmailServiceImpl) MarkEmailAsUnread(ctx context.Context, userID, emailI
 	// 发布邮件状态变更事件
 	if s.eventPublisher != nil {
 		isRead := false
-		event := sse.NewEmailStatusEvent(emailID, email.AccountID, userID, &isRead, nil, nil)
+		event := sse.NewEmailStatusEvent(emailID, email.AccountID, userID, &isRead, nil, nil, nil)
 		if err := s.eventPublisher.PublishToUser(ctx, userID, event); err != nil {
 			// 记录错误但不影响主要操作
 			fmt.Printf("Failed to publish email unread event: %v\n", err)
@@ -1087,10 +1231,10 @@ func (s *EmailServiceImpl) ToggleEmailStar(ctx context.Context, userID, emailID 
 		var event *sse.Event
 
 		if isStarred {
-			event = sse.NewEmailStatusEvent(emailID, email.AccountID, userID, nil, &isStarred, nil)
+			event = sse.NewEmailStatusEvent(emailID, email.AccountID, userID, nil, &isStarred, nil, nil)
 			event.Type = sse.EventEmailStarred
 		} else {
-			event = sse.NewEmailStatusEvent(emailID, email.AccountID, userID, nil, &isStarred, nil)
+			event = sse.NewEmailStatusEvent(emailID, email.AccountID, userID, nil, &isStarred, nil, nil)
 			event.Type = sse.EventEmailUnstarred
 		}
 
@@ -1131,10 +1275,10 @@ func (s *EmailServiceImpl) ToggleEmailImportant(ctx context.Context, userID, ema
 		var event *sse.Event
 
 		if isImportant {
-			event = sse.NewEmailStatusEvent(emailID, email.AccountID, userID, nil, nil, &isImportant)
+			event = sse.NewEmailStatusEvent(emailID, email.AccountID, userID, nil, nil, nil, &isImportant)
 			event.Type = sse.EventEmailImportant
 		} else {
-			event = sse.NewEmailStatusEvent(emailID, email.AccountID, userID, nil, nil, &isImportant)
+			event = sse.NewEmailStatusEvent(emailID, email.AccountID, userID, nil, nil, nil, &isImportant)
 			event.Type = sse.EventEmailUnimportant
 		}
 
@@ -2409,6 +2553,34 @@ func (s *EmailServiceImpl) loadAttachmentsFromIDs(ctx context.Context, message *
 		}
 
 		message.Attachments = append(message.Attachments, outgoingAttachment)
+	}
+
+	return nil
+}
+
+// configureProxySettings 配置代理设置
+func (s *EmailServiceImpl) configureProxySettings(account *models.EmailAccount, req *CreateEmailAccountRequest) error {
+	// 设置代理URL
+	account.ProxyURL = req.ProxyURL
+
+	// 验证代理配置
+	if err := account.ValidateProxyConfig(); err != nil {
+		return fmt.Errorf("invalid proxy configuration: %w", err)
+	}
+
+	return nil
+}
+
+// updateProxySettings 更新代理设置
+func (s *EmailServiceImpl) updateProxySettings(account *models.EmailAccount, req *UpdateEmailAccountRequest) error {
+	// 更新代理URL
+	if req.ProxyURL != nil {
+		account.ProxyURL = *req.ProxyURL
+	}
+
+	// 验证代理配置
+	if err := account.ValidateProxyConfig(); err != nil {
+		return fmt.Errorf("invalid proxy configuration: %w", err)
 	}
 
 	return nil
